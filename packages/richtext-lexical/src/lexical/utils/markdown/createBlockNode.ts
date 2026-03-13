@@ -3,7 +3,7 @@ import type { ElementNode } from 'lexical'
 import type { ElementTransformer } from '../../../packages/@lexical/markdown/MarkdownTransformers.js'
 
 export const createBlockNode = (
-  createNode: (match: Array<string>) => ElementNode,
+  createNode: (match: Array<string>) => ElementNode | null,
 ): ElementTransformer['replace'] => {
   return (parentNode, children, match) => {
     const node = createNode(match)
