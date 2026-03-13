@@ -34,7 +34,9 @@ import { useDocumentEvents } from '../../providers/DocumentEvents/index.js'
 import { useLocale } from '../../providers/Locale/index.js'
 import { useTranslation } from '../../providers/Translation/index.js'
 import { sanitizeFilterOptionsQuery } from '../../utilities/sanitizeFilterOptionsQuery.js'
+import { getGlobalRelationshipBatcher } from '../../utilities/RelationshipBatcher.js'
 import { fieldBaseClass } from '../shared/index.js'
+import { buildRelationshipsToFetch } from './utils.js'
 import { createRelationMap } from './createRelationMap.js'
 import { findOptionsByValue } from './findOptionsByValue.js'
 import { optionsReducer } from './optionsReducer.js'
@@ -417,72 +419,76 @@ export const RelationshipInput: React.FC<RelationshipInputProps> = (props) => {
           },
     )
 
-    void Object.entries(relationMap).reduce(async (priorRelation, [relation, ids]) => {
-      await priorRelation
-
-      const idsToLoad = ids.filter((id) => {
-        return !options.find((optionGroup) =>
-          optionGroup?.options?.find(
-            (option) => option.value === id && option.relationTo === relation,
-          ),
-        )
-      })
-
-      if (idsToLoad.length > 0) {
-        const collection = getEntityConfig({ collectionSlug: relation })
-        const fieldToSelect = collection?.admin?.useAsTitle || 'id'
-
-        const query = {
-          depth: 0,
-          draft: true,
-          limit: idsToLoad.length,
+    // Use batching utility to fetch relationships efficiently.
+    // The batcher singleton is re-initialized automatically when locale, language,
+    // or apiRoute changes, so context values are always current.
+    queueTask(async () => {
+      try {
+        const batcher = getGlobalRelationshipBatcher({
+          apiRoute: api,
           locale,
-          select: {
-            [fieldToSelect]: true,
-          },
-          where: {
-            id: {
-              in: idsToLoad,
-            },
-          },
+          i18nLanguage: i18n.language,
+        })
+
+        // Build list of relationships that need fetching (filters out cached items)
+        const relationshipsToFetch = buildRelationshipsToFetch({
+          relationMap,
+          getEntityConfig,
+          options,
+          batcher,
+        })
+
+        // Exit early if nothing to fetch
+        if (relationshipsToFetch.length === 0) {
+          return
         }
 
-        if (!errorLoading) {
-          const response = await fetch(
-            formatAdminURL({
-              apiRoute: api,
-              path: `/${relation}`,
-            }),
-            {
-              body: qs.stringify(query),
-              credentials: 'include',
-              headers: {
-                'Accept-Language': i18n.language,
-                'Content-Type': 'application/x-www-form-urlencoded',
-                'X-Payload-HTTP-Method-Override': 'GET',
-              },
-              method: 'POST',
-            },
-          )
-          let docs = []
+        // Batch fetch all relationships in parallel (grouped by collection)
+        await batcher.batchFetch(relationshipsToFetch as any)
 
-          if (response.ok) {
-            const data = await response.json()
-            docs = data.docs
+        // Group fetched docs by collection and dispatch once per collection to
+        // minimise reducer work and avoid repeated sorting/re-rendering.
+        const docsByCollection = new Map<
+          string,
+          {
+            collection: (typeof relationshipsToFetch)[0]['collection']
+            docs: unknown[]
+            ids: string[]
           }
+        >()
 
+        relationshipsToFetch.forEach(({ collection, id }) => {
+          const cachedDoc = batcher.getFromCache(collection.slug, id)
+          if (cachedDoc) {
+            const entry = docsByCollection.get(collection.slug)
+            if (entry) {
+              entry.docs.push(cachedDoc)
+              entry.ids.push(id)
+            } else {
+              docsByCollection.set(collection.slug, { collection, docs: [cachedDoc], ids: [id] })
+            }
+          }
+        })
+
+        docsByCollection.forEach(({ collection, docs, ids }) => {
           dispatchOptions({
             type: 'ADD',
-            collection,
+            collection: collection as any,
             config,
             docs,
             i18n,
-            ids: idsToLoad,
+            ids,
             sort: true,
           })
+        })
+      } catch (error) {
+        // Log error in development mode only
+        if (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production') {
+          // eslint-disable-next-line no-console
+          console.error('Failed to load relationship labels:', error)
         }
       }
-    }, Promise.resolve())
+    })
   })
 
   const { mostRecentUpdate } = useDocumentEvents()

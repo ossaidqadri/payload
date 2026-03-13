@@ -53,4 +53,17 @@ describe('Lexical Heading Feature', () => {
     await expect(lexical.editor.locator('h5')).toHaveCount(0)
     await expect(lexical.editor.locator('h6')).toHaveCount(0)
   })
+
+  test('markdown shortcut should only create enabled headings', async () => {
+    // The LexicalHeadingFeature collection enables h2 and h4 only
+    await lexical.paste('markdown', '## Enabled H2')
+    await expect(lexical.editor.locator('h2')).toHaveCount(1)
+
+    await lexical.paste('markdown', '### Disabled H3')
+    // H3 is not in the enabled list — should remain as paragraph
+    await expect(lexical.editor.locator('h3')).toHaveCount(0)
+
+    await lexical.paste('markdown', '#### Enabled H4')
+    await expect(lexical.editor.locator('h4')).toHaveCount(1)
+  })
 })
