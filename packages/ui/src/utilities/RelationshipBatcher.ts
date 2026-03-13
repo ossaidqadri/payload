@@ -113,7 +113,9 @@ export class RelationshipBatcher {
     const normalizedId = String(id)
     const cacheKey = this.getCacheKey(collection, normalizedId)
 
-    // Evict oldest-inserted entry if cache is full (FIFO strategy)
+    // Evict oldest-inserted entry if cache is full (FIFO strategy).
+    // Map maintains insertion order in JavaScript, so the first key is always
+    // the oldest entry.
     if (this.cache.size >= MAX_CACHE_SIZE) {
       const firstKey = this.cache.keys().next().value
       if (firstKey) {

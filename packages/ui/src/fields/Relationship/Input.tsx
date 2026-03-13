@@ -483,7 +483,7 @@ export const RelationshipInput: React.FC<RelationshipInputProps> = (props) => {
         })
       } catch (error) {
         // Log error in development mode only
-        if (typeof process !== 'undefined' && process.env?.NODE_ENV !== 'production') {
+        if (process.env?.NODE_ENV !== 'production') {
           // eslint-disable-next-line no-console
           console.error('Failed to load relationship labels:', error)
         }

@@ -34,7 +34,7 @@ export const MarkdownTransformer: (enabledHeadingSizes: HeadingTagType[]) => Ele
       // This prevents creating invalid h0 nodes when all heading sizes are disabled
       // and the regex matches an empty capture group. Returns null to skip the
       // transformation and leave the paragraph intact.
-      if (level === undefined || !enabledSizes.includes(level)) {
+      if (!level || !enabledSizes.includes(level)) {
         return null
       }
 
